@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,8 @@ class EmployeeProfile(BaseModel):
 
 
 class LeaveBalanceResult(BaseModel):
-    employee_id: str
+    employee_id: str | None
+    calculation_basis: Literal["employee_record", "hypothetical_scenario"]
     as_of_date: date
     policy_year: int
     projected_entitlement: float
@@ -42,8 +43,17 @@ class LeaveBalanceResult(BaseModel):
     approved_leave_taken: float
     approved_future_leave: float
     available_balance: float
-    in_probation: bool
+    in_probation: bool | None
+    assumptions: list[str] = Field(default_factory=list)
     explanation: list[str]
+
+
+class LeaveCalculationOutcome(BaseModel):
+    status: Literal["success", "needs_input", "invalid_input"]
+    result: LeaveBalanceResult | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    known_facts: dict[str, Any] = Field(default_factory=dict)
+    message: str | None = None
 
 
 class ExpenseCheckResult(BaseModel):

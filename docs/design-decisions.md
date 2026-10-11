@@ -1,0 +1,34 @@
+# PeopleGuide Key Design Decisions
+
+- **HR policy assistant use case:** Build PeopleGuide for the fictional Northstar Systems company, covering leave, flexible work, expenses, benefits, conduct, and HR support.
+- **Synthetic demo data:** Use fictional policies, employees, records, and contact details so the application can demonstrate realistic HR workflows without processing real personal data.
+- **Clear product boundary:** Provide policy guidance and estimates, but do not approve requests, modify records, make employment decisions, or provide legal or medical advice.
+- **FastAPI backend:** Use Python and FastAPI for API endpoints, dependency setup, validation, and streamed workflow events.
+- **React frontend:** Use React, TypeScript, and Vite for a small chat interface showing answers, citations, assumptions, participating agents, and workflow progress.
+- **Server-Sent Events:** Stream agent progress from FastAPI to React with SSE because communication is primarily one-way during each assistant run.
+- **LangGraph orchestration:** Use LangGraph instead of CrewAI or AutoGen for explicit typed state, conditional routing, testable graph edges, and controlled conversation checkpoints.
+- **Three-agent structure:** Separate the system into a Supervisor HR Agent, Policy RAG Agent, and Employee Case Analyst with distinct responsibilities.
+- **Supervisor ownership:** Let the Supervisor select the smallest sufficient route, combine specialist evidence, disclose assumptions, and produce the final user-facing response.
+- **Policy RAG responsibility:** Restrict the RAG Agent to finding and interpreting policy evidence; it must not perform personalized calculations or make the final decision.
+- **Case Analyst responsibility:** Use the Case Analyst for employee facts, scenario interpretation, structured-data queries, and deterministic calculations.
+- **Dynamic workflows:** Allow runtime selection of `direct`, `rag`, `case`, `rag_then_case`, or `escalate` instead of executing every agent for every question.
+- **OpenAI-only model provider:** Use OpenAI for all LLM calls and embeddings; no local embedding or language models are used.
+- **Qdrant vector store:** Store policy embeddings in locally persisted Qdrant for a simple demo deployment with semantic search and metadata filtering.
+- **Markdown knowledge base:** Keep the 12 synthetic policies in version-controlled Markdown with YAML metadata, stable policy IDs, numbered sections, effective dates, scopes, and cross-references.
+- **Section-aware RAG:** Chunk policies along section boundaries, attach citation metadata, filter by status/date/location/audience, and let the RAG Agent resolve precedence and evidence gaps.
+- **Evidence-only search tool:** Make `search_policies` return structured evidence records rather than generating an answer, leaving synthesis to the Supervisor.
+- **Deterministic domain tools:** Keep arithmetic and threshold checks in Python tools rather than asking the LLM to calculate authoritative values in free-form text.
+- **Reusable leave calculator:** Use one `calculate_leave_balance` tool for both selected employee records and temporary conversational scenarios instead of maintaining duplicate calculators.
+- **Transient hypothetical scenarios:** When no employee is selected, extract only the facts supplied in the conversation, apply documented demo defaults, and do not persist a temporary employee record.
+- **Explicit hypothetical assumptions:** Label scenario results as estimates and disclose assumptions such as an inferred joining year, full-time work, approved reported leave, no future leave, and no carryover.
+- **Recoverable tool outcomes:** Return typed `success`, `needs_input`, or `invalid_input` results for expected calculation gaps instead of raising exceptions that terminate the graph.
+- **Upward error handling:** Carry missing fields and invalid inputs from the tool through the Case Analyst report so the Supervisor can answer, request clarification, or suggest verification dynamically.
+- **Typed agent contracts:** Use Pydantic models for plans, specialist reports, citations, escalation advice, and final responses to constrain LLM outputs and simplify validation.
+- **Compact resilient citations:** Normalize and truncate policy excerpts to 500 characters so an overlong LLM-selected excerpt cannot invalidate an otherwise useful response.
+- **Deterministic safety gate:** Check explicit sensitive-risk phrases before LLM planning so immediate safety, sensitive conduct, fraud, and employment-decision requests have a controlled path.
+- **Advisory specialist escalation:** Treat RAG and Case Analyst escalation signals as typed advice; specialists cannot terminate the graph or bypass a planned Case Analyst step.
+- **Controlled escalation authority:** Permit only the deterministic safety gate or Supervisor plan to enter the dedicated human-escalation branch.
+- **Severity-aware escalation copy:** Use different language for emergencies, confidential reports, and routine qualified review rather than showing emergency guidance for every escalation.
+- **Conversation state:** Use LangGraph's in-memory checkpointer for thread-scoped demo conversations, with persistent storage reserved as a production improvement.
+- **Testing strategy:** Cover deterministic services, structured models, graph-routing invariants, tool schemas, API health, and representative end-to-end agent behavior.
+

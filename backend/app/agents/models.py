@@ -75,9 +75,12 @@ class RagAgentReport(BaseModel):
 
 
 class CaseAgentReport(BaseModel):
+    status: Literal["success", "needs_input", "invalid_input"] = "success"
+    calculation_basis: Literal["employee_record", "hypothetical_scenario"] | None = None
     conclusions: list[str]
     facts_used: list[str]
     calculations: list[str]
+    assumptions: list[str] = Field(default_factory=list)
     missing_information: list[str]
     tool_names_used: list[str]
     requires_policy_review: bool = False

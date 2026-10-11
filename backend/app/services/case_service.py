@@ -12,6 +12,7 @@ from app.models.case import (
     BenefitPlan,
     EmployeeProfile,
     ExpenseCheckResult,
+    LeaveCalculationOutcome,
     LeaveBalanceResult,
     RemoteWorkCheckResult,
 )
@@ -45,20 +46,151 @@ class CaseDataService:
             raise ValueError(f"Unknown synthetic employee ID: {employee_id}") from exc
 
     def calculate_leave_balance(
-        self, employee_id: str, as_of_date: date
+        self,
+        *,
+        as_of_date: date,
+        employee_id: str | None = None,
+        start_date: date | None = None,
+        start_date_inferred: bool = False,
+        work_schedule_percentage: float | None = None,
+        leave_taken: float | None = None,
+        approved_future_leave: float | None = None,
+        carryover_days: float | None = None,
+        probation_end_date: date | None = None,
+    ) -> LeaveCalculationOutcome:
+        """Calculate from either an official demo record or temporary scenario facts."""
+        normalized_employee_id = employee_id.strip().upper() if employee_id else None
+        assumptions: list[str] = []
+
+        if normalized_employee_id:
+            try:
+                employee = self.get_employee_profile(normalized_employee_id)
+            except ValueError as exc:
+                return LeaveCalculationOutcome(
+                    status="invalid_input",
+                    known_facts={"employee_id": normalized_employee_id},
+                    message=str(exc),
+                )
+
+            start_date = employee.start_date
+            work_schedule_percentage = employee.work_schedule_percentage
+            approved_leave_taken = 0
+            approved_future_leave = 0
+            for entry in employee.leave_entries:
+                if (
+                    entry.leave_type != "annual"
+                    or entry.status != "approved"
+                    or entry.start_date.year != as_of_date.year
+                ):
+                    continue
+                if entry.start_date <= as_of_date:
+                    approved_leave_taken += entry.days
+                else:
+                    approved_future_leave += entry.days
+            carryover_days = employee.carryover_days
+            probation_end_date = employee.probation_end_date
+            calculation_basis = "employee_record"
+        else:
+            known_facts = {
+                "as_of_date": as_of_date.isoformat(),
+                "start_date": start_date.isoformat() if start_date else None,
+                "leave_taken": leave_taken,
+            }
+            missing_fields = []
+            if start_date is None:
+                missing_fields.append("start_date")
+            if leave_taken is None:
+                missing_fields.append("leave_taken")
+            if missing_fields:
+                return LeaveCalculationOutcome(
+                    status="needs_input",
+                    missing_fields=missing_fields,
+                    known_facts=known_facts,
+                    message="More scenario information is required before leave can be calculated.",
+                )
+
+            if work_schedule_percentage is None:
+                work_schedule_percentage = 1.0
+                assumptions.append("Full-time work schedule (100%).")
+            approved_leave_taken = leave_taken
+            assumptions.append(
+                "Reported leave already taken is treated as approved annual leave."
+            )
+            if start_date_inferred:
+                assumptions.append(
+                    f"The partial joining date was interpreted as {start_date.isoformat()}."
+                )
+            if approved_future_leave is None:
+                approved_future_leave = 0
+                assumptions.append("No approved future annual leave.")
+            if carryover_days is None:
+                carryover_days = 0
+                assumptions.append("No carried-over annual leave.")
+            calculation_basis = "hypothetical_scenario"
+
+        assert start_date is not None
+        assert work_schedule_percentage is not None
+        assert approved_leave_taken is not None
+        assert approved_future_leave is not None
+        assert carryover_days is not None
+
+        if not 0 < work_schedule_percentage <= 1:
+            return LeaveCalculationOutcome(
+                status="invalid_input",
+                known_facts={"work_schedule_percentage": work_schedule_percentage},
+                message="work_schedule_percentage must be greater than 0 and at most 1.",
+            )
+        if min(approved_leave_taken, approved_future_leave, carryover_days) < 0:
+            return LeaveCalculationOutcome(
+                status="invalid_input",
+                message="Leave usage and carryover values cannot be negative.",
+            )
+        if start_date > as_of_date:
+            return LeaveCalculationOutcome(
+                status="invalid_input",
+                known_facts={
+                    "start_date": start_date.isoformat(),
+                    "as_of_date": as_of_date.isoformat(),
+                },
+                message="The employment start date cannot be after the balance as-of date.",
+            )
+
+        result = self._calculate_leave_balance(
+            employee_id=normalized_employee_id,
+            calculation_basis=calculation_basis,
+            start_date=start_date,
+            as_of_date=as_of_date,
+            work_schedule_percentage=work_schedule_percentage,
+            approved_leave_taken=approved_leave_taken,
+            approved_future_leave=approved_future_leave,
+            carryover_days=carryover_days,
+            probation_end_date=probation_end_date,
+            assumptions=assumptions,
+        )
+        return LeaveCalculationOutcome(status="success", result=result)
+
+    def _calculate_leave_balance(
+        self,
+        *,
+        employee_id: str | None,
+        calculation_basis: str,
+        start_date: date,
+        as_of_date: date,
+        work_schedule_percentage: float,
+        approved_leave_taken: float,
+        approved_future_leave: float,
+        carryover_days: float,
+        probation_end_date: date | None,
+        assumptions: list[str],
     ) -> LeaveBalanceResult:
-        employee = self.get_employee_profile(employee_id)
         policy_year = as_of_date.year
         year_start = date(policy_year, 1, 1)
         year_end = date(policy_year, 12, 31)
-        employment_start = max(employee.start_date, year_start)
-
-        if employment_start > year_end:
-            raise ValueError(f"{employee_id} had not started by policy year {policy_year}")
+        employment_start = max(start_date, year_start)
 
         days_in_year = Decimal((year_end - year_start).days + 1)
         employed_days = Decimal((year_end - employment_start).days + 1)
-        full_year = Decimal("20") * Decimal(str(employee.work_schedule_percentage))
+        full_year = Decimal("20") * Decimal(str(work_schedule_percentage))
         projected = _round_half_day(full_year * employed_days / days_in_year)
 
         eligible_months = 13 - employment_start.month
@@ -74,19 +206,9 @@ class CaseDataService:
             else Decimal("0")
         )
 
-        approved_taken = Decimal("0")
-        approved_future = Decimal("0")
-        for entry in employee.leave_entries:
-            if entry.leave_type != "annual" or entry.status != "approved":
-                continue
-            if entry.start_date.year != policy_year:
-                continue
-            if entry.start_date <= as_of_date:
-                approved_taken += Decimal(str(entry.days))
-            else:
-                approved_future += Decimal(str(entry.days))
-
-        carryover = Decimal(str(employee.carryover_days))
+        approved_taken = Decimal(str(approved_leave_taken))
+        approved_future = Decimal(str(approved_future_leave))
+        carryover = Decimal(str(carryover_days))
         if as_of_date > date(policy_year, 3, 31):
             carryover = Decimal("0")
 
@@ -98,7 +220,8 @@ class CaseDataService:
         ]
 
         return LeaveBalanceResult(
-            employee_id=employee.employee_id,
+            employee_id=employee_id,
+            calculation_basis=calculation_basis,
             as_of_date=as_of_date,
             policy_year=policy_year,
             projected_entitlement=float(projected),
@@ -107,7 +230,10 @@ class CaseDataService:
             approved_leave_taken=float(approved_taken),
             approved_future_leave=float(approved_future),
             available_balance=round(float(available), 2),
-            in_probation=as_of_date <= employee.probation_end_date,
+            in_probation=(
+                as_of_date <= probation_end_date if probation_end_date is not None else None
+            ),
+            assumptions=assumptions,
             explanation=explanation,
         )
 

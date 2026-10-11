@@ -53,7 +53,7 @@ Searches active policy sections, checks scope and precedence, and returns findin
 
 ### Employee Case Analyst
 
-Uses synthetic employee and reference data to calculate leave, evaluate expenses, compare benefits, and pre-check international remote-work requests. Arithmetic and thresholds live in deterministic code rather than prompts.
+Uses synthetic employee and reference data to calculate leave, evaluate expenses, compare benefits, and pre-check international remote-work requests. When no employee is selected, it can apply the same leave calculator to temporary facts supplied in the conversation. Arithmetic and thresholds live in deterministic code rather than prompts.
 
 ## Tools
 
@@ -63,6 +63,8 @@ Uses synthetic employee and reference data to calculate leave, evaluate expenses
 - `check_expense_eligibility`
 - `compare_benefit_plans`
 - `check_remote_work_request`
+
+`calculate_leave_balance` accepts either a selected synthetic employee ID or temporary scenario facts. It returns a typed `success`, `needs_input`, or `invalid_input` outcome, allowing missing values to flow back through the Case Analyst to the Supervisor instead of terminating the graph.
 
 ## RAG design
 
@@ -150,7 +152,7 @@ Structured tool use:
 
 > Compare the Standard and Premium benefit plans.
 
-Multi-agent collaboration using employee `NS-1042`:
+Multi-agent collaboration using employee `NS-1042`, or as a hypothetical scenario with no employee selected:
 
 > I joined on 15 June and have already taken four days off. How much annual leave is available to me today?
 

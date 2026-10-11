@@ -1,4 +1,9 @@
-from app.agents.models import MAX_CITATION_EXCERPT_LENGTH, Citation, RagAgentReport
+from app.agents.models import (
+    MAX_CITATION_EXCERPT_LENGTH,
+    CaseAgentReport,
+    Citation,
+    RagAgentReport,
+)
 
 
 def test_long_citation_excerpt_is_truncated_instead_of_rejected() -> None:
@@ -35,4 +40,19 @@ def test_citation_excerpt_whitespace_is_normalised() -> None:
     )
 
     assert citation.excerpt == "One sentence. Another sentence."
+
+
+def test_case_report_carries_recoverable_tool_status_upward() -> None:
+    report = CaseAgentReport(
+        status="needs_input",
+        conclusions=[],
+        facts_used=["As-of date: 2026-10-11"],
+        calculations=[],
+        missing_information=["start_date"],
+        tool_names_used=["calculate_leave_balance"],
+    )
+
+    assert report.status == "needs_input"
+    assert report.missing_information == ["start_date"]
+    assert report.escalation_advice is None
 

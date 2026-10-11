@@ -87,8 +87,19 @@ class CaseAgentReport(BaseModel):
     escalation_advice: EscalationAdvice | None = None
 
 
+class AnswerSegment(BaseModel):
+    text: str
+    source_refs: list[str] = Field(min_length=1)
+
+
+class AnswerBlock(BaseModel):
+    kind: Literal["paragraph", "bullet"] = "paragraph"
+    segments: list[AnswerSegment] = Field(min_length=1)
+
+
 class FinalResponse(BaseModel):
     answer_markdown: str
+    answer_blocks: list[AnswerBlock] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     escalation_required: bool = False

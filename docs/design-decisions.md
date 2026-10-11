@@ -31,4 +31,5 @@
 - **Severity-aware escalation copy:** Use different language for emergencies, confidential reports, and routine qualified review rather than showing emergency guidance for every escalation.
 - **Conversation state:** Use LangGraph's in-memory checkpointer for thread-scoped demo conversations, with persistent storage reserved as a production improvement.
 - **Testing strategy:** Cover deterministic services, structured models, graph-routing invariants, tool schemas, API health, and representative end-to-end agent behavior.
+- **Claim-level provenance:** Return structured answer blocks whose short claim segments reference only tools or synthesis steps that actually ran; render matching numbered colours in the response and execution history, with bidirectional hover/focus highlighting, so attribution does not rely on colour alone.
 

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.models import Citation
+from app.agents.models import AnswerBlock, Citation
 
 
 class ChatRequest(BaseModel):
@@ -25,6 +25,7 @@ class ExecutionStep(BaseModel):
 class ChatResponse(BaseModel):
     conversation_id: str
     answer: str
+    answer_blocks: list[AnswerBlock]
     citations: list[Citation]
     assumptions: list[str]
     escalation_required: bool

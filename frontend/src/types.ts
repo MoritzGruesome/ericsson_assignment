@@ -13,9 +13,20 @@ export interface ExecutionStep {
   agent: string | null;
 }
 
+export interface AnswerSegment {
+  text: string;
+  source_refs: string[];
+}
+
+export interface AnswerBlock {
+  kind: "paragraph" | "bullet";
+  segments: AnswerSegment[];
+}
+
 export interface AssistantResult {
   conversation_id: string;
   answer: string;
+  answer_blocks: AnswerBlock[];
   citations: Citation[];
   assumptions: string[];
   escalation_required: boolean;

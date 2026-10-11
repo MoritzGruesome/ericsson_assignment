@@ -11,6 +11,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph, add_messages
 
 from app.agents.models import (
+    AnswerBlock,
+    AnswerSegment,
     CaseAgentReport,
     Citation,
     EscalationAdvice,
@@ -163,6 +165,60 @@ def _actual_tool_names(result: dict[str, Any], allowed_names: set[str]) -> list[
     return list(dict.fromkeys(names))
 
 
+def _available_answer_sources(state: AssistantState) -> list[str]:
+    sources: list[str] = []
+    if state.get("rag_report"):
+        sources.extend(state.get("rag_tool_names") or ["search_policies"])
+    if state.get("case_report"):
+        report = CaseAgentReport.model_validate(state["case_report"])
+        sources.extend(report.tool_names_used)
+    sources.append("supervisor_final")
+    return list(dict.fromkeys(sources))
+
+
+def normalise_answer_provenance(
+    response: FinalResponse,
+    allowed_sources: list[str],
+    *,
+    fallback_source: str,
+) -> FinalResponse:
+    allowed = set(allowed_sources)
+    blocks: list[AnswerBlock] = []
+    for block in response.answer_blocks:
+        segments: list[AnswerSegment] = []
+        for segment in block.segments:
+            text = segment.text.strip()
+            if not text:
+                continue
+            source_refs = [
+                source
+                for source in dict.fromkeys(segment.source_refs)
+                if source in allowed
+            ]
+            segments.append(
+                AnswerSegment(
+                    text=text,
+                    source_refs=source_refs or [fallback_source],
+                )
+            )
+        if segments:
+            blocks.append(AnswerBlock(kind=block.kind, segments=segments))
+
+    if not blocks:
+        blocks = [
+            AnswerBlock(
+                kind="paragraph",
+                segments=[
+                    AnswerSegment(
+                        text=response.answer_markdown,
+                        source_refs=[fallback_source],
+                    )
+                ],
+            )
+        ]
+    return response.model_copy(update={"answer_blocks": blocks})
+
+
 def _build_model(settings: Settings) -> ChatOpenAI:
     kwargs: dict[str, Any] = {
         "model": settings.llm_model,
@@ -290,19 +346,26 @@ def build_graph(
 
     async def supervisor_final(state: AssistantState) -> dict[str, Any]:
         decision = SupervisorDecision.model_validate(state["decision"])
+        answer_sources = _available_answer_sources(state)
         prompt = (
             f"Original request: {_latest_user_text(state)}\n"
             f"Selected employee: {state.get('employee_id') or 'none'}\n"
             f"As-of date: {state.get('as_of_date')}\n"
             f"Route and rationale: {_safe_json(decision)}\n"
             f"Policy report: {_safe_json(state.get('rag_report'))}\n"
-            f"Case report: {_safe_json(state.get('case_report'))}"
+            f"Case report: {_safe_json(state.get('case_report'))}\n"
+            f"Permitted answer source references: {_safe_json(answer_sources)}"
         )
         response = await synthesizer.ainvoke(
             [
                 {"role": "system", "content": SUPERVISOR_SYNTHESIS_PROMPT},
                 {"role": "user", "content": prompt},
             ]
+        )
+        response = normalise_answer_provenance(
+            response,
+            answer_sources,
+            fallback_source="supervisor_final",
         )
         return {
             "final_response": response.model_dump(mode="json"),
@@ -325,6 +388,14 @@ def build_graph(
         answer = escalation_answer(advice)
         response = FinalResponse(
             answer_markdown=answer,
+            answer_blocks=[
+                AnswerBlock(
+                    kind="paragraph",
+                    segments=[
+                        AnswerSegment(text=answer, source_refs=["human_escalation"])
+                    ],
+                )
+            ],
             citations=[
                 Citation(
                     policy_id="HR-SUPPORT-001",

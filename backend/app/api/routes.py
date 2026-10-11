@@ -131,6 +131,7 @@ def _to_chat_response(
     return ChatResponse(
         conversation_id=conversation_id,
         answer=final.answer_markdown,
+        answer_blocks=final.answer_blocks,
         citations=final.citations,
         assumptions=final.assumptions,
         escalation_required=final.escalation_required,

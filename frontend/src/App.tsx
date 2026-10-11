@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { streamChat } from "./api";
-import type { ChatMessage, Citation, ExecutionStep, StreamEvent } from "./types";
+import type { AnswerBlock, AssistantResult, ChatMessage, Citation, ExecutionStep, StreamEvent } from "./types";
 
 const EXAMPLES = [
   {
@@ -23,6 +23,44 @@ const AGENT_LABELS: Record<string, string> = {
   policy_rag_agent: "Policy RAG Agent",
   employee_case_analyst: "Case Analyst",
 };
+
+const SOURCE_PALETTE = [
+  { accent: "#39705f", background: "#e1efe9" },
+  { accent: "#527897", background: "#e4edf4" },
+  { accent: "#a25f28", background: "#f5e8db" },
+  { accent: "#735d9c", background: "#ece7f4" },
+  { accent: "#9a4f65", background: "#f4e5e9" },
+  { accent: "#6f7132", background: "#eeefd9" },
+];
+
+interface SourceMeta {
+  accent: string;
+  background: string;
+  index: number;
+  label: string;
+}
+
+function buildSourceMap(steps: ExecutionStep[]) {
+  const sources = new Map<string, SourceMeta>();
+  steps.forEach((step) => {
+    if (sources.has(step.name)) return;
+    const color = SOURCE_PALETTE[sources.size % SOURCE_PALETTE.length];
+    sources.set(step.name, {
+      ...color,
+      index: sources.size + 1,
+      label: step.label,
+    });
+  });
+  return sources;
+}
+
+function sourceStyle(source?: SourceMeta): CSSProperties {
+  if (!source) return {};
+  return {
+    "--source-color": source.accent,
+    "--source-background": source.background,
+  } as CSSProperties;
+}
 
 function Icon({ name }: { name: "leaf" | "send" | "book" | "person" | "shield" }) {
   const paths = {
@@ -52,16 +90,40 @@ function CitationCard({ citation }: { citation: Citation }) {
   );
 }
 
-function ExecutionHistory({ steps, live = false }: { steps: ExecutionStep[]; live?: boolean }) {
+function ExecutionHistory({
+  steps,
+  live = false,
+  activeSources = [],
+  onSourcesChange,
+}: {
+  steps: ExecutionStep[];
+  live?: boolean;
+  activeSources?: string[];
+  onSourcesChange?: (sources: string[]) => void;
+}) {
+  const sourceMap = buildSourceMap(steps);
+  const hasActiveSource = activeSources.length > 0;
   const content = (
     <div className={`execution-steps${live ? " live" : ""}`}>
-      {steps.map((step, index) => (
-        <div className={`execution-step ${step.kind}`} key={`${step.kind}-${step.name}-${index}`}>
+      {steps.map((step, index) => {
+        const source = sourceMap.get(step.name);
+        const isActive = activeSources.includes(step.name);
+        return <div
+          className={`execution-step ${step.kind}${isActive ? " is-active" : ""}${hasActiveSource && !isActive ? " is-dimmed" : ""}`}
+          key={`${step.kind}-${step.name}-${index}`}
+          style={sourceStyle(source)}
+          tabIndex={onSourcesChange ? 0 : undefined}
+          onMouseEnter={() => onSourcesChange?.([step.name])}
+          onMouseLeave={() => onSourcesChange?.([])}
+          onFocus={() => onSourcesChange?.([step.name])}
+          onBlur={() => onSourcesChange?.([])}
+        >
           <i />
+          <b>{source?.index}</b>
           <span>{step.label}</span>
           {step.kind === "tool" && <code>{step.name}</code>}
-        </div>
-      ))}
+        </div>;
+      })}
     </div>
   );
 
@@ -75,6 +137,91 @@ function ExecutionHistory({ steps, live = false }: { steps: ExecutionStep[]; liv
       </summary>
       {content}
     </details>
+  );
+}
+
+function ProvenanceAnswer({
+  blocks,
+  history,
+  activeSources,
+  onSourcesChange,
+}: {
+  blocks: AnswerBlock[];
+  history: ExecutionStep[];
+  activeSources: string[];
+  onSourcesChange: (sources: string[]) => void;
+}) {
+  const sourceMap = buildSourceMap(history);
+  const hasActiveSource = activeSources.length > 0;
+
+  const renderSegments = (block: AnswerBlock) => block.segments.map((segment, index) => {
+    const sources = segment.source_refs
+      .map((sourceRef) => sourceMap.get(sourceRef))
+      .filter((source): source is SourceMeta => Boolean(source));
+    const primary = sources[0];
+    const sourceLabel = sources.map((source) => source.label).join("; ");
+    const sourceRefs = segment.source_refs.filter((sourceRef) => sourceMap.has(sourceRef));
+    const isActive = sourceRefs.some((sourceRef) => activeSources.includes(sourceRef));
+    return (
+      <span key={`${segment.text}-${index}`}>
+        {index > 0 ? " " : null}
+        <mark
+          className={`provenance-segment${isActive ? " is-active" : ""}${hasActiveSource && !isActive ? " is-dimmed" : ""}`}
+          style={sourceStyle(primary)}
+          title={sourceLabel ? `Source: ${sourceLabel}` : undefined}
+          tabIndex={0}
+          onMouseEnter={() => onSourcesChange(sourceRefs)}
+          onMouseLeave={() => onSourcesChange([])}
+          onFocus={() => onSourcesChange(sourceRefs)}
+          onBlur={() => onSourcesChange([])}
+        >
+          {segment.text.replace(/\*\*/g, "")}
+          {sources.length ? (
+            <span className="provenance-markers" aria-label={`Sources: ${sourceLabel}`}>
+              {sources.map((source) => (
+                <sup key={source.index} style={sourceStyle(source)}>{source.index}</sup>
+              ))}
+            </span>
+          ) : null}
+        </mark>
+      </span>
+    );
+  });
+
+  return (
+    <div className="answer-content provenance-answer">
+      {blocks.map((block, index) => block.kind === "bullet" ? (
+        <div className="provenance-bullet" key={index}><span>•</span><p>{renderSegments(block)}</p></div>
+      ) : (
+        <p key={index}>{renderSegments(block)}</p>
+      ))}
+    </div>
+  );
+}
+
+function AssistantAnswer({ content, result }: { content: string; result: AssistantResult }) {
+  const [activeSources, setActiveSources] = useState<string[]>([]);
+
+  return (
+    <div className="provenance-context">
+      {result.answer_blocks.length ? (
+        <ProvenanceAnswer
+          blocks={result.answer_blocks}
+          history={result.execution_history}
+          activeSources={activeSources}
+          onSourcesChange={setActiveSources}
+        />
+      ) : (
+        <div className="answer-content">{formatAnswer(content)}</div>
+      )}
+      {result.execution_history.length ? (
+        <ExecutionHistory
+          steps={result.execution_history}
+          activeSources={activeSources}
+          onSourcesChange={setActiveSources}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -235,10 +382,11 @@ export default function App() {
                         <span>{message.result.agents_used.map((agent) => AGENT_LABELS[agent] ?? agent).join(" · ")}</span>
                       )}
                     </div>
-                    <div className="answer-content">{formatAnswer(message.content)}</div>
-                    {message.result?.execution_history.length ? (
-                      <ExecutionHistory steps={message.result.execution_history} />
-                    ) : null}
+                    {message.result ? (
+                      <AssistantAnswer content={message.content} result={message.result} />
+                    ) : (
+                      <div className="answer-content">{formatAnswer(message.content)}</div>
+                    )}
                     {message.result?.assumptions.length ? (
                       <div className="assumptions"><strong>Assumptions</strong>{message.result.assumptions.join(" · ")}</div>
                     ) : null}

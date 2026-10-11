@@ -26,11 +26,11 @@ The assistant combines policy retrieval, synthetic employee data, deterministic 
 ### Data and retrieval
 
 - Markdown policy documents under `data/policies/`
-- Qdrant in local persistent mode for policy chunks, embeddings, and retrieval metadata
-- SQLite for synthetic employee and reference data during the demo
-- A LangGraph checkpointer for thread-scoped conversation state
+- Qdrant in local persistent mode for policy chunks, OpenAI embeddings, and retrieval metadata
+- Version-controlled JSON for synthetic employee and reference data during the demo
+- LangGraph's in-memory checkpointer for thread-scoped demo conversation state
 
-The embedding model, LLM provider, and persistent checkpointer will be selected during implementation. Qdrant has been selected as the vector store because it can run locally for the demo while supporting metadata filters and hybrid dense/sparse retrieval.
+OpenAI is the provider for all learned-model calls, including agent LLM calls and policy embeddings. The initial embedding model is `text-embedding-3-small`, configurable through the environment. Qdrant has been selected as the vector store because it can run locally for the demo while supporting vector retrieval and metadata filters. A persistent PostgreSQL checkpointer is a future production improvement; the demo currently keeps conversation checkpoints in process memory.
 
 ## 3. Initial three-agent design
 
@@ -161,18 +161,18 @@ Policy ingestion will run as an explicit offline command rather than during ever
 2. Split documents along numbered Markdown section boundaries.
 3. Split only unusually long sections into smaller paragraph-based chunks.
 4. Add the policy title and section breadcrumb to each embedded chunk.
-5. Generate dense and sparse representations.
+5. Generate dense vector representations with the configured OpenAI embedding model.
 6. Upsert the chunks into a locally persisted Qdrant collection.
 
 Chunk IDs will be deterministic so re-ingestion updates existing records instead of creating duplicates. Stored metadata will include the policy ID, version, document status, effective date, locations, applicable audiences, section number and title, source path, and chunk index.
 
 ### 7.2 Policy retrieval
 
-Retrieval will use hybrid search:
+Retrieval will combine semantic search with explicit structured constraints:
 
-- Dense retrieval for semantic similarity and paraphrased questions.
-- Sparse or BM25-style retrieval for exact terminology, policy IDs, and numeric thresholds.
-- Rank fusion to produce the final evidence set.
+- OpenAI dense embeddings for semantic similarity and paraphrased questions.
+- Exact metadata filters for policy IDs, status, location, audience, and effective dates.
+- A direct policy-ID filter when a request names a specific policy.
 
 Filters will be applied before ranking wherever possible. Normal filters include active document status, effective date, location, employee type, and optional policy IDs. Policy precedence—such as a Hong Kong addendum overriding a global policy—will be evaluated by the RAG Agent using the retrieved evidence and governance policy.
 
@@ -240,7 +240,7 @@ Expected route: deterministic sensitive-case detection followed by a safe respon
 
 1. Define the FastAPI and frontend project structure.
 2. Define Pydantic API models and the typed LangGraph state.
-3. Build and test section-aware policy ingestion into Qdrant, hybrid retrieval, metadata filters, and citations.
+3. Build and test section-aware OpenAI embedding ingestion into Qdrant, semantic retrieval, metadata filters, and citations.
 4. Create synthetic employee and reference datasets.
 5. Implement deterministic tools independently of the agents.
 6. Implement the two subagents and Supervisor routing.

@@ -1,0 +1,68 @@
+{
+  "expense_categories": {
+    "taxi": {
+      "limit_hkd": 500,
+      "approvals": ["manager"],
+      "above_limit_approvals": ["manager", "department_head"],
+      "evidence": ["itemized_receipt", "business_purpose"]
+    },
+    "domestic_meal": {
+      "limit_hkd": 350,
+      "approvals": ["manager"],
+      "above_limit_approvals": ["manager", "department_head"],
+      "evidence": ["itemized_receipt"]
+    },
+    "international_meal": {
+      "limit_hkd": 600,
+      "approvals": ["manager"],
+      "above_limit_approvals": ["manager", "department_head"],
+      "evidence": ["itemized_receipt"]
+    },
+    "hong_kong_hotel": {
+      "limit_hkd": 1800,
+      "approvals": ["manager"],
+      "above_limit_approvals": ["manager", "department_head"],
+      "evidence": ["hotel_invoice"]
+    },
+    "client_entertainment": {
+      "limit_hkd": 1500,
+      "approvals": ["manager"],
+      "above_limit_approvals": ["manager", "department_head"],
+      "evidence": ["itemized_receipt", "attendee_names", "business_purpose"]
+    },
+    "home_office_accessory": {
+      "limit_hkd": 1500,
+      "approvals": ["manager"],
+      "above_limit_approvals": ["manager", "people_operations"],
+      "evidence": ["receipt", "approved_equipment_item"]
+    }
+  },
+  "benefit_plans": {
+    "Standard": {
+      "name": "Standard",
+      "monthly_contribution_hkd": 0,
+      "outpatient_annual_limit_hkd": 6000,
+      "specialist_copay_hkd": 250,
+      "dental_annual_limit_hkd": 1500,
+      "vision_annual_limit_hkd": null,
+      "dependant_rule": "Employee-paid add-on"
+    },
+    "Premium": {
+      "name": "Premium",
+      "monthly_contribution_hkd": 420,
+      "outpatient_annual_limit_hkd": 12000,
+      "specialist_copay_hkd": 100,
+      "dental_annual_limit_hkd": 4000,
+      "vision_annual_limit_hkd": 1500,
+      "dependant_rule": "One dependant subsidized at 50%"
+    }
+  },
+  "destinations": {
+    "japan": {"status": "approved", "security_review": false},
+    "singapore": {"status": "approved", "security_review": false},
+    "united_kingdom": {"status": "approved", "security_review": false},
+    "united_states": {"status": "conditional", "security_review": true},
+    "unknown": {"status": "review_required", "security_review": true}
+  }
+}
+

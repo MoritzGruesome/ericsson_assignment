@@ -1,0 +1,65 @@
+{
+  "employees": [
+    {
+      "employee_id": "NS-1042",
+      "display_name": "Mei Lin",
+      "work_location": "hong_kong",
+      "employment_type": "permanent_employees",
+      "work_schedule_percentage": 1.0,
+      "start_date": "2026-06-15",
+      "probation_end_date": "2026-09-14",
+      "manager_id": "NS-0088",
+      "department": "Engineering",
+      "job_level": "individual_contributor",
+      "benefit_plan": "Premium",
+      "role_work_arrangement": "hybrid",
+      "restricted_data_access": false,
+      "carryover_days": 0,
+      "leave_entries": [
+        {"start_date": "2026-08-03", "days": 2, "status": "approved", "leave_type": "annual"},
+        {"start_date": "2026-09-21", "days": 2, "status": "approved", "leave_type": "annual"}
+      ],
+      "international_remote_work_days": []
+    },
+    {
+      "employee_id": "NS-1077",
+      "display_name": "Arjun Shah",
+      "work_location": "hong_kong",
+      "employment_type": "permanent_employees",
+      "work_schedule_percentage": 1.0,
+      "start_date": "2024-02-12",
+      "probation_end_date": "2024-05-11",
+      "manager_id": "NS-0051",
+      "department": "Sales",
+      "job_level": "manager",
+      "benefit_plan": "Standard",
+      "role_work_arrangement": "hybrid",
+      "restricted_data_access": true,
+      "carryover_days": 3,
+      "leave_entries": [
+        {"start_date": "2026-02-09", "days": 3, "status": "approved", "leave_type": "annual"},
+        {"start_date": "2026-07-13", "days": 5, "status": "approved", "leave_type": "annual"}
+      ],
+      "international_remote_work_days": ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06"]
+    },
+    {
+      "employee_id": "NS-1115",
+      "display_name": "Sofia Chan",
+      "work_location": "hong_kong",
+      "employment_type": "fixed_term_employees",
+      "work_schedule_percentage": 0.8,
+      "start_date": "2026-01-05",
+      "probation_end_date": "2026-04-04",
+      "manager_id": "NS-0088",
+      "department": "Operations",
+      "job_level": "individual_contributor",
+      "benefit_plan": "Standard",
+      "role_work_arrangement": "hybrid",
+      "restricted_data_access": false,
+      "carryover_days": 0,
+      "leave_entries": [],
+      "international_remote_work_days": []
+    }
+  ]
+}
+

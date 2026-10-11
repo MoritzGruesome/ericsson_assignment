@@ -1,1 +1,21 @@
 /learn
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Local application data
+.data/
+backend/.data/

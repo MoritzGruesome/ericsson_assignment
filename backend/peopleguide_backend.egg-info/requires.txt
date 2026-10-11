@@ -1,0 +1,14 @@
+fastapi<1,>=0.115
+uvicorn[standard]<1,>=0.34
+langchain<2,>=1.0
+langchain-openai<2,>=1.0
+langgraph<2,>=1.0
+pydantic<3,>=2.10
+pydantic-settings<3,>=2.7
+python-frontmatter<2,>=1.1
+qdrant-client<2,>=1.14
+
+[dev]
+httpx<1,>=0.28
+pytest<10,>=8
+pytest-asyncio<2,>=0.25

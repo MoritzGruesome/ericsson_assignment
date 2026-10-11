@@ -81,6 +81,20 @@ svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-
 .chevron { margin-left: auto; color: #7e8a86; }
 .citation-card p { margin: 0; padding: 0 14px 9px 51px; color: #4f625c; font-size: 12px; line-height: 1.55; }
 .citation-card code { display: block; margin: 0 14px 12px 51px; font-size: 10px; color: #7d8985; }
+.execution-history { margin-top: 14px; border: 1px solid #d8dbd2; border-radius: 10px; background: #f8f8f2; overflow: hidden; }
+.execution-history summary { list-style: none; display: flex; align-items: center; gap: 9px; padding: 10px 12px; cursor: pointer; color: #52655f; }
+.execution-history summary::-webkit-details-marker { display: none; }
+.execution-history summary > span:first-child { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
+.execution-history summary small { color: #87938f; font-size: 10px; }
+.execution-history[open] .chevron { transform: rotate(180deg); }
+.execution-steps { display: grid; gap: 0; padding: 2px 12px 11px; }
+.execution-steps.live { padding: 0; gap: 7px; }
+.execution-step { position: relative; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 27px; color: #65756f; font-size: 11px; }
+.execution-step i { width: 6px; height: 6px; border-radius: 50%; background: #6b9d83; }
+.execution-step.tool i { background: #d59458; }
+.execution-step code { color: #6e5845; background: #eee8de; border-radius: 5px; padding: 2px 5px; font-size: 9px; }
+.execution-steps.live .execution-step { font-size: 12px; }
+.execution-steps.live .execution-step i { animation: pulse 1.25s infinite; }
 .progress-list { display: grid; gap: 7px; color: #65756f; font-size: 12px; }
 .progress-list div { display: flex; align-items: center; gap: 8px; }
 .progress-list i { width: 6px; height: 6px; border-radius: 50%; background: #6b9d83; animation: pulse 1.25s infinite; }

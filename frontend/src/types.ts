@@ -6,6 +6,13 @@ export interface Citation {
   excerpt: string;
 }
 
+export interface ExecutionStep {
+  kind: "agent" | "tool";
+  name: string;
+  label: string;
+  agent: string | null;
+}
+
 export interface AssistantResult {
   conversation_id: string;
   answer: string;
@@ -15,6 +22,7 @@ export interface AssistantResult {
   escalation_reason: string | null;
   agents_used: string[];
   route: string | null;
+  execution_history: ExecutionStep[];
 }
 
 export interface ChatMessage {

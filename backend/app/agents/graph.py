@@ -5,7 +5,7 @@ from datetime import date
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph, add_messages
@@ -36,6 +36,7 @@ class AssistantState(TypedDict, total=False):
     as_of_date: str
     decision: dict[str, Any] | None
     rag_report: dict[str, Any] | None
+    rag_tool_names: list[str]
     case_report: dict[str, Any] | None
     final_response: dict[str, Any] | None
     safety_escalation: dict[str, Any] | None
@@ -151,6 +152,17 @@ def _safe_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
+def _actual_tool_names(result: dict[str, Any], allowed_names: set[str]) -> list[str]:
+    names = [
+        message.name
+        for message in result.get("messages", [])
+        if isinstance(message, ToolMessage)
+        and message.name
+        and message.name in allowed_names
+    ]
+    return list(dict.fromkeys(names))
+
+
 def _build_model(settings: Settings) -> ChatOpenAI:
     kwargs: dict[str, Any] = {
         "model": settings.llm_model,
@@ -174,16 +186,19 @@ def build_graph(
     planner = model.with_structured_output(SupervisorDecision)
     synthesizer = model.with_structured_output(FinalResponse)
 
+    policy_search_tool = create_policy_search_tool(policy_service)
     rag_agent = create_agent(
         model=model,
-        tools=[create_policy_search_tool(policy_service)],
+        tools=[policy_search_tool],
         system_prompt=RAG_AGENT_PROMPT,
         response_format=RagAgentReport,
         name="policy_rag_agent",
     )
+    case_tools = create_case_tools(case_service)
+    case_tool_names = {tool.name for tool in case_tools}
     case_agent = create_agent(
         model=model,
-        tools=create_case_tools(case_service),
+        tools=case_tools,
         system_prompt=CASE_AGENT_PROMPT,
         response_format=CaseAgentReport,
         name="employee_case_analyst",
@@ -197,6 +212,7 @@ def build_graph(
             ),
             "decision": None,
             "rag_report": None,
+            "rag_tool_names": [],
             "case_report": None,
             "final_response": None,
             "agents_used": ["supervisor"],
@@ -247,6 +263,7 @@ def build_graph(
             report = RagAgentReport.model_validate(report)
         return {
             "rag_report": report.model_dump(mode="json"),
+            "rag_tool_names": _actual_tool_names(result, {policy_search_tool.name}),
             "agents_used": [*state.get("agents_used", []), "policy_rag_agent"],
         }
 
@@ -263,6 +280,9 @@ def build_graph(
         report = result.get("structured_response")
         if not isinstance(report, CaseAgentReport):
             report = CaseAgentReport.model_validate(report)
+        report = report.model_copy(
+            update={"tool_names_used": _actual_tool_names(result, case_tool_names)}
+        )
         return {
             "case_report": report.model_dump(mode="json"),
             "agents_used": [*state.get("agents_used", []), "employee_case_analyst"],

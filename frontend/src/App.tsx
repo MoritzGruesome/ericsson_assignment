@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { streamChat } from "./api";
-import type { ChatMessage, Citation, StreamEvent } from "./types";
+import type { ChatMessage, Citation, ExecutionStep, StreamEvent } from "./types";
 
 const EXAMPLES = [
   {
@@ -52,6 +52,32 @@ function CitationCard({ citation }: { citation: Citation }) {
   );
 }
 
+function ExecutionHistory({ steps, live = false }: { steps: ExecutionStep[]; live?: boolean }) {
+  const content = (
+    <div className={`execution-steps${live ? " live" : ""}`}>
+      {steps.map((step, index) => (
+        <div className={`execution-step ${step.kind}`} key={`${step.kind}-${step.name}-${index}`}>
+          <i />
+          <span>{step.label}</span>
+          {step.kind === "tool" && <code>{step.name}</code>}
+        </div>
+      ))}
+    </div>
+  );
+
+  if (live) return content;
+  return (
+    <details className="execution-history">
+      <summary>
+        <span>Agent execution history</span>
+        <small>{steps.length} {steps.length === 1 ? "step" : "steps"}</small>
+        <span className="chevron">⌄</span>
+      </summary>
+      {content}
+    </details>
+  );
+}
+
 function formatAnswer(content: string) {
   return content.split("\n").map((line, index) => {
     if (line.startsWith("- ")) return <li key={index}>{line.slice(2)}</li>;
@@ -65,7 +91,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<string[]>([]);
+  const [progress, setProgress] = useState<ExecutionStep[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -98,8 +124,13 @@ export default function App() {
             setConversationId(String(streamEvent.data.conversation_id));
           }
           if (streamEvent.event === "progress") {
-            const label = String(streamEvent.data.label);
-            setProgress((current) => current.includes(label) ? current : [...current, label]);
+            const step = streamEvent.data as unknown as ExecutionStep;
+            setProgress((current) => {
+              const duplicate = current.some(
+                (item) => item.kind === step.kind && item.name === step.name && item.label === step.label,
+              );
+              return duplicate ? current : [...current, step];
+            });
           }
         },
       });
@@ -205,6 +236,9 @@ export default function App() {
                       )}
                     </div>
                     <div className="answer-content">{formatAnswer(message.content)}</div>
+                    {message.result?.execution_history.length ? (
+                      <ExecutionHistory steps={message.result.execution_history} />
+                    ) : null}
                     {message.result?.assumptions.length ? (
                       <div className="assumptions"><strong>Assumptions</strong>{message.result.assumptions.join(" · ")}</div>
                     ) : null}
@@ -225,9 +259,11 @@ export default function App() {
                   <div className="avatar"><Icon name="leaf" /></div>
                   <div className="message-body">
                     <div className="message-meta"><strong>PeopleGuide</strong><span>Working with your specialist team</span></div>
-                    <div className="progress-list">
-                      {progress.length ? progress.map((item) => <div key={item}><i />{item}</div>) : <div><i />Starting analysis</div>}
-                    </div>
+                    {progress.length ? (
+                      <ExecutionHistory steps={progress} live />
+                    ) : (
+                      <div className="progress-list"><div><i />Starting analysis</div></div>
+                    )}
                   </div>
                 </article>
               )}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +15,13 @@ class ChatRequest(BaseModel):
     as_of_date: date | None = None
 
 
+class ExecutionStep(BaseModel):
+    kind: Literal["agent", "tool"]
+    name: str
+    label: str
+    agent: str | None = None
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     answer: str
@@ -23,6 +31,7 @@ class ChatResponse(BaseModel):
     escalation_reason: str | None
     agents_used: list[str]
     route: str | None
+    execution_history: list[ExecutionStep] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

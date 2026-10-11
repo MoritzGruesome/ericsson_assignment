@@ -10,9 +10,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.agents.models import FinalResponse, SupervisorDecision
+from app.agents.models import CaseAgentReport, FinalResponse, SupervisorDecision
 from app.config import Settings
-from app.models.api import ChatRequest, ChatResponse, HealthResponse
+from app.models.api import ChatRequest, ChatResponse, ExecutionStep, HealthResponse
 
 
 router = APIRouter()
@@ -26,7 +26,105 @@ def _require_llm(settings: Settings) -> None:
         )
 
 
-def _to_chat_response(conversation_id: str, state: dict) -> ChatResponse:
+NODE_STEPS = {
+    "safety_gate": ExecutionStep(
+        kind="agent",
+        name="safety_gate",
+        label="Supervisor checked the request",
+        agent="supervisor",
+    ),
+    "supervisor_plan": ExecutionStep(
+        kind="agent",
+        name="supervisor_plan",
+        label="Supervisor selected a route",
+        agent="supervisor",
+    ),
+    "supervisor_final": ExecutionStep(
+        kind="agent",
+        name="supervisor_final",
+        label="Supervisor prepared the answer",
+        agent="supervisor",
+    ),
+    "human_escalation": ExecutionStep(
+        kind="agent",
+        name="human_escalation",
+        label="Supervisor applied the escalation policy",
+        agent="supervisor",
+    ),
+}
+
+
+def _execution_steps_for_update(node_name: str, update: object) -> list[ExecutionStep]:
+    if node_name == "policy_rag_agent":
+        tool_names = update.get("rag_tool_names", []) if isinstance(update, dict) else []
+        tool_names = list(dict.fromkeys(tool_names)) or ["search_policies"]
+        return [
+            ExecutionStep(
+                kind="tool",
+                name=tool_name,
+                label=f"Policy RAG Agent used {tool_name}",
+                agent="policy_rag_agent",
+            )
+            for tool_name in tool_names
+        ]
+
+    if node_name == "employee_case_analyst":
+        report_data = update.get("case_report") if isinstance(update, dict) else None
+        report = CaseAgentReport.model_validate(report_data) if report_data else None
+        tool_names = list(dict.fromkeys(report.tool_names_used)) if report else []
+        if tool_names:
+            return [
+                ExecutionStep(
+                    kind="tool",
+                    name=tool_name,
+                    label=f"Case Analyst used {tool_name}",
+                    agent="employee_case_analyst",
+                )
+                for tool_name in tool_names
+            ]
+        return [
+            ExecutionStep(
+                kind="agent",
+                name="employee_case_analyst",
+                label="Case Analyst completed the analysis",
+                agent="employee_case_analyst",
+            )
+        ]
+
+    step = NODE_STEPS.get(node_name)
+    return [step] if step else []
+
+
+def _execution_history_from_state(state: dict) -> list[ExecutionStep]:
+    history = [NODE_STEPS["safety_gate"]]
+    decision_data = state.get("decision")
+    if not decision_data:
+        return [*history, NODE_STEPS["human_escalation"]]
+
+    decision = SupervisorDecision.model_validate(decision_data)
+    history.append(NODE_STEPS["supervisor_plan"])
+    agents_used = state.get("agents_used", [])
+    if "policy_rag_agent" in agents_used:
+        history.extend(_execution_steps_for_update("policy_rag_agent", state))
+    if "employee_case_analyst" in agents_used:
+        history.extend(
+            _execution_steps_for_update(
+                "employee_case_analyst", {"case_report": state.get("case_report")}
+            )
+        )
+    history.append(
+        NODE_STEPS["human_escalation"]
+        if decision.route == "escalate"
+        else NODE_STEPS["supervisor_final"]
+    )
+    return history
+
+
+def _to_chat_response(
+    conversation_id: str,
+    state: dict,
+    execution_history: list[ExecutionStep] | None = None,
+) -> ChatResponse:
     final = FinalResponse.model_validate(state["final_response"])
     decision_data = state.get("decision")
     route = SupervisorDecision.model_validate(decision_data).route if decision_data else "escalate"
@@ -39,6 +137,7 @@ def _to_chat_response(conversation_id: str, state: dict) -> ChatResponse:
         escalation_reason=final.escalation_reason,
         agents_used=list(dict.fromkeys(state.get("agents_used", ["supervisor"]))),
         route=route,
+        execution_history=execution_history or _execution_history_from_state(state),
     )
 
 
@@ -90,26 +189,21 @@ async def stream_chat(payload: ChatRequest, request: Request) -> StreamingRespon
             return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
         yield emit("start", {"conversation_id": conversation_id})
-        node_labels = {
-            "safety_gate": "Supervisor is checking the request",
-            "supervisor_plan": "Supervisor selected a route",
-            "policy_rag_agent": "Policy agent searched the knowledge base",
-            "employee_case_analyst": "Case analyst applied structured data",
-            "supervisor_final": "Supervisor prepared the answer",
-            "human_escalation": "Supervisor applied the escalation policy",
-        }
-        final_state = None
+        execution_history: list[ExecutionStep] = []
         try:
             async for chunk in graph.astream(
                 _graph_input(payload, settings), config=config, stream_mode="updates"
             ):
-                for node_name in chunk:
-                    yield emit(
-                        "progress",
-                        {"node": node_name, "label": node_labels.get(node_name, node_name)},
-                    )
+                for node_name, update in chunk.items():
+                    for step in _execution_steps_for_update(node_name, update):
+                        execution_history.append(step)
+                        yield emit("progress", step.model_dump(mode="json"))
             final_state = await graph.aget_state(config)
-            response = _to_chat_response(conversation_id, final_state.values)
+            response = _to_chat_response(
+                conversation_id,
+                final_state.values,
+                execution_history=execution_history,
+            )
             yield emit("complete", response.model_dump(mode="json"))
         except Exception as exc:
             yield emit("error", {"message": str(exc)})

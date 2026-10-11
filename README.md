@@ -2,8 +2,6 @@
 
 PeopleGuide is a small multi-agent HR policy assistant for the fictional company Northstar Systems Ltd. It answers questions about leave, flexible work, expenses, benefits, and HR procedures using policy retrieval, synthetic employee data, deterministic tools, and OpenAI models.
 
-This repository is an interview demonstration. Its policies, contacts, and employee records are synthetic; the assistant does not approve requests, modify records, make employment decisions, or provide legal or medical advice.
-
 ## Technology
 
 - FastAPI and Pydantic backend
@@ -125,22 +123,6 @@ npm run dev
 
 Open `http://localhost:5173`. FastAPI documentation is available at `http://localhost:8000/docs`.
 
-## Verification
-
-Run backend tests:
-
-```bash
-cd backend
-PYTHONPATH=. ../.venv/bin/pytest
-```
-
-Build and audit the frontend:
-
-```bash
-cd frontend
-npm run build
-npm audit --audit-level=moderate
-```
 
 ## Example questions
 
@@ -163,6 +145,37 @@ Expense policy and threshold analysis:
 Mandatory escalation:
 
 > I want to report repeated inappropriate comments from my manager.
+
+### Multi-turn clarification examples
+
+Use each sequence in one chat so the follow-up can complete or correct the earlier request.
+
+1. **Complete a hypothetical leave calculation**
+
+   > User: I started on 15 June. Can you estimate my annual-leave balance?
+   >
+   > Follow-up: The year was 2025, and I have taken four approved days.
+
+   Expected behavior: the assistant asks for missing calculation facts, remembers the original
+   scenario, and reruns the shared leave calculator with the completed start date and leave usage.
+
+2. **Supply missing expense evidence and context**
+
+   > User: I paid HKD 620 for a taxi. Can I claim it?
+   >
+   > Follow-up: It was a taxi home after a client dinner at 22:45, and I have the itemized receipt.
+
+   Expected behavior: the assistant carries the amount and category into the follow-up, retrieves
+   the expense policy, and checks the completed scenario against the taxi limit and approval rules.
+
+3. **Complete an international remote-work request**
+
+   > User: Can I work remotely from Japan?
+   >
+   > Follow-up: I am employee NS-1077, and the working dates would be 2–6 November 2026.
+
+   Expected behavior: the assistant requests the missing employee and date information, then uses
+   the remembered destination to run the remote-work pre-check and explain any approval requirements.
 
 ## Repository layout
 

@@ -13,6 +13,7 @@ from langgraph.graph import END, START, StateGraph, add_messages
 from app.agents.models import (
     CaseAgentReport,
     Citation,
+    EscalationAdvice,
     FinalResponse,
     RagAgentReport,
     SupervisorDecision,
@@ -37,36 +38,102 @@ class AssistantState(TypedDict, total=False):
     rag_report: dict[str, Any] | None
     case_report: dict[str, Any] | None
     final_response: dict[str, Any] | None
-    safety_reason: str | None
+    safety_escalation: dict[str, Any] | None
     agents_used: list[str]
 
 
-SENSITIVE_TERMS: dict[str, tuple[str, ...]] = {
-    "workplace conduct concern": (
-        "harassment",
-        "discrimination",
-        "retaliation",
-        "inappropriate comments",
-        "bullying",
+SENSITIVE_RULES: tuple[tuple[EscalationAdvice, tuple[str, ...]], ...] = (
+    (
+        EscalationAdvice(
+            category="immediate_safety",
+            severity="emergency",
+            reason="The request indicates a possible immediate safety concern.",
+        ),
+        (
+            "immediate danger",
+            "violence",
+            "weapon",
+            "unsafe right now",
+            "self-harm",
+            "suicide",
+        ),
     ),
-    "immediate safety concern": (
-        "immediate danger",
-        "violence",
-        "weapon",
-        "unsafe right now",
-        "self-harm",
-        "suicide",
+    (
+        EscalationAdvice(
+            category="sensitive_report",
+            severity="urgent",
+            reason="The request appears to report a sensitive workplace conduct concern.",
+        ),
+        (
+            "harassment",
+            "discrimination",
+            "retaliation",
+            "inappropriate comments",
+            "bullying",
+        ),
     ),
-    "suspected fraud": ("fraud", "falsified records", "stealing from the company"),
-    "employment decision": (
-        "should i fire",
-        "should we fire",
-        "should i hire",
-        "should we hire",
-        "disciplinary sanction",
-        "promotion decision",
+    (
+        EscalationAdvice(
+            category="suspected_fraud",
+            severity="urgent",
+            reason="The request appears to report suspected fraud or falsified records.",
+        ),
+        ("fraud", "falsified records", "stealing from the company"),
     ),
-}
+    (
+        EscalationAdvice(
+            category="employment_decision",
+            severity="standard",
+            reason="The request asks the assistant to make an employment decision.",
+        ),
+        (
+            "should i fire",
+            "should we fire",
+            "should i hire",
+            "should we hire",
+            "disciplinary sanction",
+            "promotion decision",
+        ),
+    ),
+)
+
+
+def detect_safety_escalation(text: str) -> EscalationAdvice | None:
+    normalized = text.lower()
+    for advice, terms in SENSITIVE_RULES:
+        if any(term in normalized for term in terms):
+            return advice
+    return None
+
+
+def escalation_answer(advice: EscalationAdvice) -> str:
+    if advice.category == "immediate_safety" or advice.severity == "emergency":
+        return (
+            "This may involve an immediate safety risk. Contact local emergency services first "
+            "if anyone may be in danger, then notify Northstar Security and the Hong Kong People "
+            "Partner. Please avoid sharing unnecessary sensitive details in this chat."
+        )
+    if advice.category in {"sensitive_report", "suspected_fraud"}:
+        return (
+            "This concern should be reviewed confidentially by a person. Contact the fictional "
+            "Northstar Hong Kong People Partner at `hk-people-partner@northstar.example` or use "
+            "`ethics.northstar.example/report`. Please avoid sharing unnecessary sensitive "
+            "details in this chat."
+        )
+    return (
+        "I can explain the relevant policy, but I cannot make this decision. Please contact "
+        "the fictional Northstar Hong Kong People Partner at "
+        "`hk-people-partner@northstar.example` for a qualified review."
+    )
+
+
+def route_after_rag_report(state: AssistantState) -> Literal["case", "final"]:
+    """Specialist advice is evidence for the Supervisor, never a graph terminator."""
+    report = RagAgentReport.model_validate(state["rag_report"])
+    decision = SupervisorDecision.model_validate(state["decision"])
+    if decision.route == "rag_then_case" or report.requires_case_analysis:
+        return "case"
+    return "final"
 
 
 def _latest_user_text(state: AssistantState) -> str:
@@ -123,14 +190,11 @@ def build_graph(
     )
 
     async def safety_gate(state: AssistantState) -> dict[str, Any]:
-        text = _latest_user_text(state).lower()
-        safety_reason = None
-        for reason, terms in SENSITIVE_TERMS.items():
-            if any(term in text for term in terms):
-                safety_reason = reason
-                break
+        safety_escalation = detect_safety_escalation(_latest_user_text(state))
         return {
-            "safety_reason": safety_reason,
+            "safety_escalation": (
+                safety_escalation.model_dump(mode="json") if safety_escalation else None
+            ),
             "decision": None,
             "rag_report": None,
             "case_report": None,
@@ -139,7 +203,7 @@ def build_graph(
         }
 
     def route_after_safety(state: AssistantState) -> Literal["escalate", "plan"]:
-        return "escalate" if state.get("safety_reason") else "plan"
+        return "escalate" if state.get("safety_escalation") else "plan"
 
     async def supervisor_plan(state: AssistantState) -> dict[str, Any]:
         user_text = _latest_user_text(state)
@@ -186,15 +250,6 @@ def build_graph(
             "agents_used": [*state.get("agents_used", []), "policy_rag_agent"],
         }
 
-    def route_after_rag(state: AssistantState) -> Literal["case", "final", "escalate"]:
-        report = RagAgentReport.model_validate(state["rag_report"])
-        if report.requires_human_escalation:
-            return "escalate"
-        decision = SupervisorDecision.model_validate(state["decision"])
-        if decision.route == "rag_then_case" or report.requires_case_analysis:
-            return "case"
-        return "final"
-
     async def run_case_agent(state: AssistantState) -> dict[str, Any]:
         decision = SupervisorDecision.model_validate(state["decision"])
         prompt = (
@@ -236,19 +291,18 @@ def build_graph(
 
     async def escalation_response(state: AssistantState) -> dict[str, Any]:
         decision_data = state.get("decision")
-        decision_reason = None
+        advice = None
         if decision_data:
-            decision_reason = SupervisorDecision.model_validate(
-                decision_data
-            ).escalation_reason
-        reason = state.get("safety_reason") or decision_reason or "human review is required"
-        answer = (
-            "This situation needs support from a person rather than an automated policy decision. "
-            "If anyone is in immediate danger, contact local emergency services first. Otherwise, "
-            "you can contact the fictional Northstar Hong Kong People Partner at "
-            "`hk-people-partner@northstar.example` or use `ethics.northstar.example/report`. "
-            "Please avoid sharing unnecessary sensitive details in this chat."
+            advice = SupervisorDecision.model_validate(decision_data).escalation
+        if advice is None and state.get("safety_escalation"):
+            advice = EscalationAdvice.model_validate(state["safety_escalation"])
+        advice = advice or EscalationAdvice(
+            category="legal_or_regulatory",
+            severity="standard",
+            reason="A qualified person needs to review this request.",
         )
+
+        answer = escalation_answer(advice)
         response = FinalResponse(
             answer_markdown=answer,
             citations=[
@@ -261,7 +315,7 @@ def build_graph(
                 )
             ],
             escalation_required=True,
-            escalation_reason=reason,
+            escalation_reason=advice.reason,
         )
         return {
             "final_response": response.model_dump(mode="json"),
@@ -294,11 +348,10 @@ def build_graph(
     )
     builder.add_conditional_edges(
         "policy_rag_agent",
-        route_after_rag,
+        route_after_rag_report,
         {
             "case": "employee_case_analyst",
             "final": "supervisor_final",
-            "escalate": "human_escalation",
         },
     )
     builder.add_edge("employee_case_analyst", "supervisor_final")

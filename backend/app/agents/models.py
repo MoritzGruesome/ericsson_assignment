@@ -7,6 +7,19 @@ from pydantic import BaseModel, Field, field_validator
 
 MAX_CITATION_EXCERPT_LENGTH = 500
 
+EscalationCategory = Literal[
+    "missing_information",
+    "record_dispute",
+    "policy_conflict",
+    "legal_or_regulatory",
+    "medical_or_accommodation",
+    "sensitive_report",
+    "suspected_fraud",
+    "employment_decision",
+    "immediate_safety",
+]
+EscalationSeverity = Literal["informational", "standard", "urgent", "emergency"]
+
 
 class Citation(BaseModel):
     policy_id: str
@@ -35,12 +48,20 @@ class Citation(BaseModel):
         return f"{self.policy_id} §{self.section_number}"
 
 
+class EscalationAdvice(BaseModel):
+    """Typed advice for the Supervisor; specialist advice never controls graph routing."""
+
+    category: EscalationCategory
+    severity: EscalationSeverity
+    reason: str
+
+
 class SupervisorDecision(BaseModel):
     route: Literal["direct", "rag", "case", "rag_then_case", "escalate"]
     rationale: str
     rag_task: str | None = None
     case_task: str | None = None
-    escalation_reason: str | None = None
+    escalation: EscalationAdvice | None = None
 
 
 class RagAgentReport(BaseModel):
@@ -50,7 +71,7 @@ class RagAgentReport(BaseModel):
     conflicts: list[str]
     confidence: Literal["high", "medium", "low"]
     requires_case_analysis: bool = False
-    requires_human_escalation: bool = False
+    escalation_advice: EscalationAdvice | None = None
 
 
 class CaseAgentReport(BaseModel):
@@ -60,7 +81,7 @@ class CaseAgentReport(BaseModel):
     missing_information: list[str]
     tool_names_used: list[str]
     requires_policy_review: bool = False
-    requires_human_escalation: bool = False
+    escalation_advice: EscalationAdvice | None = None
 
 
 class FinalResponse(BaseModel):

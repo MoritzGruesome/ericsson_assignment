@@ -12,6 +12,18 @@ PeopleGuide is a small multi-agent HR policy assistant for the fictional company
 - Server-Sent Events for workflow progress
 - Pytest for backend tests
 
+## Repository layout
+
+```text
+backend/                FastAPI, LangGraph, RAG, tools, and tests
+frontend/               React chat interface
+data/policies/          Synthetic Markdown policy knowledge base
+data/structured/        Synthetic employees and reference tables
+docs/policy-matrix.md   Authoritative demo policy rules
+docs/project-outline.md Architecture and implementation decisions
+Example_Questions.md    A set of demo questions, with expected outcome
+```
+
 ## Architecture
 
 ```text
@@ -72,33 +84,78 @@ Retrieval combines OpenAI semantic embeddings with deterministic filters for doc
 
 ## Local setup
 
-Prerequisites:
+### Prerequisites
 
-- Python 3.12
+- Python 3.12 or later
 - Node.js 20 or later
-- An OpenAI API key with access to the configured models
+- An OpenAI API key with access to the configured chat and embedding models
 
-Create the environment file:
+### Quick start
+
+From the repository root, create the local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env`. The default models are configurable:
+Add your API key to `.env`:
 
 ```dotenv
+OPENAI_API_KEY=your-api-key
 LLM_MODEL=gpt-6-luna
+LLM_TEMPERATURE=0
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-Install the backend:
+Then run:
+
+```bash
+./setup.sh
+```
+
+The setup script:
+
+- creates a Python virtual environment in `.venv`
+- installs the backend and frontend dependencies
+- builds the local Qdrant policy index if it does not exist
+- starts FastAPI at `http://localhost:8000`
+- starts the React application at `http://localhost:5173`
+
+Open `http://localhost:5173` in a browser. Interactive API documentation is available at
+`http://localhost:8000/docs`. Press `Ctrl+C` in the setup terminal to stop both servers.
+
+The script is safe to run again. To force a rebuild of the policy index after changing documents,
+use:
+
+```bash
+./setup.sh --reindex
+```
+
+By default, the script uses `python3.12`. If Python 3.12 or later is installed under another command
+name, provide it when starting the script:
+
+```bash
+PEOPLEGUIDE_PYTHON_BIN=python3.13 ./setup.sh
+```
+
+### Manual setup
+
+Create the environment and install the backend dependencies:
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -e 'backend[dev]'
 ```
 
-Build the policy index from the repository root:
+Install the frontend dependencies:
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+Build the policy index:
 
 ```bash
 cd backend
@@ -117,77 +174,8 @@ In a second terminal, start React:
 
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
-
-Open `http://localhost:5173`. FastAPI documentation is available at `http://localhost:8000/docs`.
-
-
-## Example questions
-
-RAG retrieval:
-
-> How many remote-working days are normally permitted during probation?
-
-Structured tool use:
-
-> Compare the Standard and Premium benefit plans.
-
-Multi-agent collaboration using employee `NS-1042`, or as a hypothetical scenario with no employee selected:
-
-> I joined on 15 June and have already taken four days off. How much annual leave is available to me today?
-
-Expense policy and threshold analysis:
-
-> A taxi home after a client dinner cost HKD 620 at 22:45. Is it reimbursable and who must approve it?
-
-Mandatory escalation:
-
-> I want to report repeated inappropriate comments from my manager.
-
-### Multi-turn clarification examples
-
-Use each sequence in one chat so the follow-up can complete or correct the earlier request.
-
-1. **Complete a hypothetical leave calculation**
-
-   > User: I started on 15 June. Can you estimate my annual-leave balance?
-   >
-   > Follow-up: The year was 2025, and I have taken four approved days.
-
-   Expected behavior: the assistant asks for missing calculation facts, remembers the original
-   scenario, and reruns the shared leave calculator with the completed start date and leave usage.
-
-2. **Supply missing expense evidence and context**
-
-   > User: I paid HKD 620 for a taxi. Can I claim it?
-   >
-   > Follow-up: It was a taxi home after a client dinner at 22:45, and I have the itemized receipt.
-
-   Expected behavior: the assistant carries the amount and category into the follow-up, retrieves
-   the expense policy, and checks the completed scenario against the taxi limit and approval rules.
-
-3. **Complete an international remote-work request**
-
-   > User: Can I work remotely from Japan?
-   >
-   > Follow-up: I am employee NS-1077, and the working dates would be 2–6 November 2026.
-
-   Expected behavior: the assistant requests the missing employee and date information, then uses
-   the remembered destination to run the remote-work pre-check and explain any approval requirements.
-
-## Repository layout
-
-```text
-backend/                FastAPI, LangGraph, RAG, tools, and tests
-frontend/               React chat interface
-data/policies/          Synthetic Markdown policy knowledge base
-data/structured/        Synthetic employees and reference tables
-docs/policy-matrix.md   Authoritative demo policy rules
-docs/project-outline.md Architecture and implementation decisions
-```
-
 ## Improvements with more time
 
 - Replace in-memory LangGraph checkpoints with PostgreSQL persistence.

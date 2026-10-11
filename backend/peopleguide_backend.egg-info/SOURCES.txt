@@ -28,6 +28,11 @@ peopleguide_backend.egg-info/SOURCES.txt
 peopleguide_backend.egg-info/dependency_links.txt
 peopleguide_backend.egg-info/requires.txt
 peopleguide_backend.egg-info/top_level.txt
+tests/test_agent_models.py
+tests/test_agent_routing.py
+tests/test_answer_provenance.py
 tests/test_api.py
 tests/test_case_service.py
+tests/test_conversation_context.py
+tests/test_execution_history.py
 tests/test_policy_parser.py

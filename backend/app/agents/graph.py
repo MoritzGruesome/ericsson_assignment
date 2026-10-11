@@ -32,6 +32,10 @@ from app.services.policy_service import PolicySearchService
 from app.tools.factories import create_case_tools, create_policy_search_tool
 
 
+MAX_CONTEXT_MESSAGES = 12
+MAX_CONTEXT_CHARACTERS = 12_000
+
+
 class AssistantState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     employee_id: str | None
@@ -144,6 +148,31 @@ def _latest_user_text(state: AssistantState) -> str:
         if isinstance(message, HumanMessage):
             return str(message.content)
     return ""
+
+
+def _message_text(message: AnyMessage) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return json.dumps(message.content, ensure_ascii=False)
+
+
+def _conversation_transcript(state: AssistantState) -> str:
+    messages = [
+        message
+        for message in state.get("messages", [])
+        if isinstance(message, (HumanMessage, AIMessage))
+    ][-MAX_CONTEXT_MESSAGES:]
+    lines = [
+        f"{'User' if isinstance(message, HumanMessage) else 'Assistant'}: "
+        f"{_message_text(message)}"
+        for message in messages
+    ]
+    transcript = "\n".join(lines)
+    if len(transcript) <= MAX_CONTEXT_CHARACTERS:
+        return transcript or "No earlier conversation."
+    prefix = "[Earlier messages omitted]\n"
+    remaining_characters = MAX_CONTEXT_CHARACTERS - len(prefix)
+    return f"{prefix}{transcript[-remaining_characters:]}"
 
 
 def _safe_json(value: Any) -> str:
@@ -282,6 +311,7 @@ def build_graph(
         context = (
             f"Current date: {state.get('as_of_date', date.today().isoformat())}\n"
             f"Selected synthetic employee ID: {state.get('employee_id') or 'none'}\n"
+            f"Conversation transcript for this thread:\n{_conversation_transcript(state)}\n"
             f"Latest user request: {user_text}"
         )
         decision = await planner.ainvoke(
@@ -309,6 +339,7 @@ def build_graph(
         prompt = (
             f"Supervisor task: {decision.rag_task}\n"
             f"Original request: {_latest_user_text(state)}\n"
+            f"Conversation transcript for this thread:\n{_conversation_transcript(state)}\n"
             f"As-of date: {state.get('as_of_date')}\n"
             f"Employee location hint: use the selected employee only if supplied; employee ID is "
             f"{state.get('employee_id') or 'not supplied'}."
@@ -328,6 +359,7 @@ def build_graph(
         prompt = (
             f"Supervisor task: {decision.case_task or 'Apply the relevant structured rules.'}\n"
             f"Original request: {_latest_user_text(state)}\n"
+            f"Conversation transcript for this thread:\n{_conversation_transcript(state)}\n"
             f"Selected synthetic employee ID: {state.get('employee_id') or 'not supplied'}\n"
             f"As-of date: {state.get('as_of_date')}\n"
             f"Policy Agent report: {_safe_json(state.get('rag_report'))}"
@@ -349,6 +381,7 @@ def build_graph(
         answer_sources = _available_answer_sources(state)
         prompt = (
             f"Original request: {_latest_user_text(state)}\n"
+            f"Conversation transcript for this thread:\n{_conversation_transcript(state)}\n"
             f"Selected employee: {state.get('employee_id') or 'none'}\n"
             f"As-of date: {state.get('as_of_date')}\n"
             f"Route and rationale: {_safe_json(decision)}\n"

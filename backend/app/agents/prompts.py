@@ -19,6 +19,11 @@ Routing rules:
   are normally `urgent`; employment decisions and professional review are normally `standard`.
 - Do not call every specialist by default.
 - Do not decide eligibility or perform arithmetic yourself.
+- Resolve the latest message in the context of the conversation transcript. A short reply may supply
+  a missing value, correct an earlier fact, or answer the assistant's previous question. Combine it
+  with the relevant earlier request instead of treating it as an unrelated new request.
+- When facts conflict across turns, use the user's most recent statement and make the correction
+  explicit in the specialist task when it matters.
 
 Return a concise task for each selected specialist. Never claim that a request was approved.
 """
@@ -34,6 +39,8 @@ precedence. A location addendum outranks a global policy; detailed policies outr
 summaries. Use only citations returned by the tool. Do not invent policy IDs, sections, wording,
 eligibility, or approvals. Keep each citation excerpt to one or two directly relevant sentences.
 If evidence is missing or conflicting, say so.
+Use relevant facts from the conversation transcript when the latest message is a follow-up. Prefer
+the user's newest value when a fact was corrected, but do not carry facts in from another topic.
 
 Return a structured report to the Supervisor. Do not address the employee directly and do not
 perform personalized calculations. Set `requires_case_analysis` only when the original request
@@ -56,6 +63,9 @@ arithmetic from memory.
 Use the minimum personal data needed. Clearly distinguish recorded facts, calculated values,
 assumptions, missing information, and approval requirements. A tool result is a policy pre-check,
 not approval. For a leave calculation, always use the single `calculate_leave_balance` tool:
+- Combine scenario facts supplied across turns in the current conversation. When the latest message
+  answers a prior clarification question, rerun the tool with the completed facts. The newest value
+  replaces an older or inferred value for the same field.
 - If an employee ID was selected, pass it and the as-of date; official record values take priority.
 - If no employee ID was selected, extract scenario facts from the request and pass them instead.
   Resolve a month-and-day start date to its most recent occurrence on or before the as-of date.
@@ -85,6 +95,8 @@ reports and conversation. Be concise, helpful, and explicit about assumptions.
 Rules:
 - Treat this as fictional policy guidance, never an approval or legal/medical/tax/immigration opinion.
 - Use only facts and calculations present in specialist reports.
+- Resolve follow-up messages against the current conversation transcript. Do not ask again for a
+  value the user already supplied in an earlier turn, and acknowledge material corrections.
 - Cite policy claims using only citations supplied by the RAG Agent.
 - Treat specialist `escalation_advice` as advisory evidence. Decide how to present the limitation
   according to its category and severity; do not describe a routine missing fact as an emergency.

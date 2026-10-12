@@ -178,11 +178,14 @@ npm run dev
 ```
 ## Improvements with more time
 
-- Replace in-memory LangGraph checkpoints with PostgreSQL persistence.
+- We currently have a supervisor with two subagents, this means that control is always returned to the supervisor when it comes to responding to the user. In multi-hop questions, where we perhaps want additional details from the user, this means that specialist questions must pass through the supervisor. This prevents the specialist (subagents) from directly asking follow-up questions. Furthermore, this tends to produce redundancy in the system, by the supervisor re-triggering a RAG and case analyst response again, which wastes tokens. ALTERNATIVELY, we could look into handoffs, giving specialist agents direct access to the Q&A, resolving issues directly. This does add more complexity however.
+- Evaluate the RAG system by creating a set of labels for particular cases. Currently, chunking is done on a per-section basis. This is intuitive but also somewhat arbitrary. It is currently unclear whether the RAG tool is effective or not. Furthermore, it is unclear whether the current hybrid retrieval is better than simple sparse OR dense. My guess would be that hybrid retrieval is still better for this scenario however.
+- Evaluate reproducibility of system by comparing snapshots of system recommendations and graph state, after repeated queries.
+    - Related to this, we would also need to meet with stakeholders to determine the expected behaviour of the system. In some cases, the system will make assumptions, e.g. about the start year, when only provided with a month and day. In other cases, the system will prompt the user for additional information, e.g. start year. Depending on the intended use case, we can guide this behaviour by injecting additional context. We could for example prompt the system to refrain from giving answers based on assumptions, and instead be more aggressive with asking for follow up information before answering.
+- Add cost tracking per agent in addition to global cost.
+- Expand the number of tools available to the case agent. 
+- Increase the number of case agents + RAG agents for parallel case review.
+- Migrate to a persistant database like Postgres, for case-replay.
 - Add authentication and employee-level authorization.
-- Add a labeled retrieval and response evaluation suite.
-- Pin model snapshots after evaluation for reproducibility.
 - Add document-version administration and incremental re-indexing.
-- Add production observability, cost tracking, and redaction controls.
-- Add a dedicated Compliance Reviewer when the workflow grows beyond three agents.
 
